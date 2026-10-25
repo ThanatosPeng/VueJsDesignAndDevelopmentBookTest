@@ -25,15 +25,35 @@ const MAX_ATTEMPTS = 100
 interface PersistedState {
   attempts: Attempt[]
   lastViewedChapterId: number | null
+  reviewedWrongAttempts: Record<string, string>
+}
+
+function loadReviewedWrongAttempts(raw: unknown): Record<string, string> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+  return Object.fromEntries(
+    Object.entries(raw).filter(
+      (entry): entry is [string, string] => typeof entry[1] === 'string',
+    ),
+  )
 }
 
 function loadState(): PersistedState {
   if (typeof localStorage === 'undefined') {
-    return { attempts: [], lastViewedChapterId: null }
+    return {
+      attempts: [],
+      lastViewedChapterId: null,
+      reviewedWrongAttempts: {},
+    }
   }
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return { attempts: [], lastViewedChapterId: null }
+    if (!raw) {
+      return {
+        attempts: [],
+        lastViewedChapterId: null,
+        reviewedWrongAttempts: {},
+      }
+    }
     const parsed = JSON.parse(raw) as Partial<PersistedState>
     return {
       attempts: Array.isArray(parsed.attempts) ? parsed.attempts : [],
@@ -41,9 +61,16 @@ function loadState(): PersistedState {
         typeof parsed.lastViewedChapterId === 'number'
           ? parsed.lastViewedChapterId
           : null,
+      reviewedWrongAttempts: loadReviewedWrongAttempts(
+        parsed.reviewedWrongAttempts,
+      ),
     }
   } catch {
-    return { attempts: [], lastViewedChapterId: null }
+    return {
+      attempts: [],
+      lastViewedChapterId: null,
+      reviewedWrongAttempts: {},
+    }
   }
 }
 
@@ -51,6 +78,9 @@ export const useProgressStore = defineStore('progress', () => {
   const initial = loadState()
   const attempts = ref<Attempt[]>(initial.attempts)
   const lastViewedChapterId = ref<number | null>(initial.lastViewedChapterId)
+  const reviewedWrongAttempts = ref<Record<string, string>>(
+    initial.reviewedWrongAttempts,
+  )
 
   function persist() {
     if (typeof localStorage === 'undefined') return
@@ -60,6 +90,7 @@ export const useProgressStore = defineStore('progress', () => {
         JSON.stringify({
           attempts: attempts.value,
           lastViewedChapterId: lastViewedChapterId.value,
+          reviewedWrongAttempts: reviewedWrongAttempts.value,
         }),
       )
     } catch {
@@ -75,6 +106,7 @@ export const useProgressStore = defineStore('progress', () => {
   function clearAllData() {
     attempts.value = []
     lastViewedChapterId.value = null
+    reviewedWrongAttempts.value = {}
     if (typeof localStorage !== 'undefined') {
       try {
         localStorage.removeItem(STORAGE_KEY)
@@ -95,18 +127,26 @@ export const useProgressStore = defineStore('progress', () => {
 
   /**
    * For every question we only keep the newest answer across all attempts.
-   * Re-answering a question correctly therefore clears it from the wrong book.
+   * A wrong item leaves the queue when a newer attempt is correct, or when
+   * the user reviews that exact wrong attempt and dismisses it manually.
    */
   const latestAnswers = computed(() => {
     const result = new Map<string, LatestAnswer>()
-    const ascending = [...attempts.value].sort((a, b) => a.finishedAt - b.finishedAt)
+    const ascending = attempts.value
+      .map((attempt, index) => ({ attempt, index }))
+      .sort(
+        (left, right) =>
+          left.attempt.finishedAt - right.attempt.finishedAt ||
+          right.index - left.index,
+      )
 
-    for (const attempt of ascending) {
+    for (const { attempt } of ascending) {
       for (const questionId of attempt.questionIds) {
         const question = questionById.get(questionId)
         if (!question) continue
         result.set(questionId, {
           questionId,
+          attemptId: attempt.id,
           correct: isAnswerCorrect(question, attempt.answers[questionId]),
           attemptedAt: attempt.finishedAt,
         })
@@ -118,7 +158,11 @@ export const useProgressStore = defineStore('progress', () => {
 
   const wrongQuestionIds = computed(() =>
     [...latestAnswers.value.values()]
-      .filter((answer) => !answer.correct)
+      .filter(
+        (answer) =>
+          !answer.correct &&
+          reviewedWrongAttempts.value[answer.questionId] !== answer.attemptId,
+      )
       .map((answer) => answer.questionId)
       .sort((a, b) => {
         const left = questionById.get(a)
@@ -127,6 +171,30 @@ export const useProgressStore = defineStore('progress', () => {
         return left.chapterId - right.chapterId || left.id.localeCompare(right.id)
       }),
   )
+
+  function markWrongQuestionReviewed(questionId: string) {
+    const latest = latestAnswers.value.get(questionId)
+    if (!latest || latest.correct) return false
+    reviewedWrongAttempts.value = {
+      ...reviewedWrongAttempts.value,
+      [questionId]: latest.attemptId,
+    }
+    persist()
+    return true
+  }
+
+  function dismissAllWrongQuestions() {
+    const pendingIds = [...wrongQuestionIds.value]
+    if (pendingIds.length === 0) return 0
+    const next = { ...reviewedWrongAttempts.value }
+    for (const questionId of pendingIds) {
+      const latest = latestAnswers.value.get(questionId)
+      if (latest) next[questionId] = latest.attemptId
+    }
+    reviewedWrongAttempts.value = next
+    persist()
+    return pendingIds.length
+  }
 
   const sectionStats = computed(() => {
     const stats = new Map<string, MasteryView>()
@@ -351,5 +419,7 @@ export const useProgressStore = defineStore('progress', () => {
     sectionMastery,
     chapterMastery,
     pointMastery,
+    markWrongQuestionReviewed,
+    dismissAllWrongQuestions,
   }
 })

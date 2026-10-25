@@ -327,6 +327,69 @@ describe('progress store diagnostics', () => {
     expect(store.getAttempt(correctAttempt.id)?.score).toBe(100)
   })
 
+  it('lets a reviewed wrong question leave the queue without changing mastery', () => {
+    const store = useProgressStore()
+    const question = questions.find((item) => item.id === 'q5-04')!
+    const wrongOption = question.options.find(
+      (option) => !question.answer.includes(option.value),
+    )!.value
+
+    store.addAttempt(
+      createAttempt({
+        scope: chapterScope,
+        questions: [question],
+        answers: { [question.id]: [wrongOption] },
+        startedAt: Date.now() - 1000,
+      }),
+    )
+    expect(store.wrongQuestionIds).toContain(question.id)
+    const masteryBefore = store.pointMastery(question.pointIds[0]).accuracy
+
+    expect(store.markWrongQuestionReviewed(question.id)).toBe(true)
+    expect(store.wrongQuestionIds).not.toContain(question.id)
+    expect(store.pointMastery(question.pointIds[0]).accuracy).toBe(masteryBefore)
+    expect(store.weakKnowledgePoints.some((point) => point.pointId === question.pointIds[0])).toBe(true)
+
+    store.addAttempt(
+      createAttempt({
+        scope: chapterScope,
+        questions: [question],
+        answers: { [question.id]: [wrongOption] },
+        startedAt: Date.now() - 500,
+      }),
+    )
+    expect(store.wrongQuestionIds).toContain(question.id)
+  })
+
+  it('can clear the whole wrong-book queue and persist that review state', () => {
+    const store = useProgressStore()
+    const first = questions.find((item) => item.id === 'q3-01')!
+    const second = questions.find((item) => item.id === 'q6-01')!
+    const wrongValue = (question: Question) =>
+      question.options.find((option) => !question.answer.includes(option.value))!.value
+
+    store.addAttempt(
+      createAttempt({
+        scope: chapterScope,
+        questions: [first, second],
+        answers: {
+          [first.id]: [wrongValue(first)],
+          [second.id]: [wrongValue(second)],
+        },
+        startedAt: Date.now() - 1000,
+      }),
+    )
+    expect(store.wrongQuestionIds).toHaveLength(2)
+
+    expect(store.dismissAllWrongQuestions()).toBe(2)
+    expect(store.wrongQuestionIds).toHaveLength(0)
+    expect(store.overall.weakPointCount).toBeGreaterThan(0)
+
+    setActivePinia(createPinia())
+    const restored = useProgressStore()
+    expect(restored.wrongQuestionIds).toHaveLength(0)
+    expect(restored.attempts).toHaveLength(1)
+  })
   it('calculates weak knowledge points at atomic granularity', () => {
     const store = useProgressStore()
     const question = questions.find((item) => item.id === 'q4-06')!

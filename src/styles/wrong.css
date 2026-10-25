@@ -326,6 +326,36 @@
   background: var(--jade);
 }
 
+.wrong-toolbar-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.toolbar-clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 34px;
+  padding: 0 12px;
+  color: var(--red);
+  background: rgba(173, 74, 57, 0.035);
+  border: 1px solid rgba(173, 74, 57, 0.16);
+  border-radius: 999px;
+  font-size: 9.5px;
+  transition:
+    color 0.2s ease,
+    background-color 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.toolbar-clear:hover {
+  color: #fff;
+  background: var(--red);
+  border-color: var(--red);
+}
+
 .wrong-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 310px;
@@ -612,6 +642,35 @@
   gap: 13px;
 }
 
+.wrong-card-footer-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.wrong-done-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 28px;
+  padding: 0 9px;
+  color: var(--jade-deep);
+  background: rgba(223, 241, 232, 0.62);
+  border: 1px solid rgba(47, 128, 103, 0.14);
+  border-radius: 999px;
+  font-size: 9.5px;
+  font-weight: 600;
+  transition:
+    color 0.2s ease,
+    background-color 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.wrong-done-button:hover {
+  color: #fff;
+  background: var(--jade);
+  border-color: var(--jade);
+}
+
 .wrong-card-footer .mini-test-btn {
   min-height: 28px;
   padding-inline: 9px;
@@ -772,6 +831,11 @@
     margin: 26px 0 18px;
   }
 
+  .wrong-toolbar-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
   .chapter-filters {
     width: 100%;
     flex-wrap: nowrap;
@@ -818,10 +882,20 @@
     justify-content: space-between;
   }
 
+  .wrong-card-footer-actions {
+    flex-wrap: wrap;
+    justify-content: flex-start !important;
+    gap: 9px !important;
+  }
+
   .wrong-side-sticky {
     display: flex;
     flex-direction: column;
     gap: 0;
+  }
+
+  .wrongbook-clear-modal .modal-actions {
+    flex-direction: column;
   }
 
   .wrong-side-sticky .rail-card + .rail-card {

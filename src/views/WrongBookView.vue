@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import {
   ArrowLeft,
   ArrowRight,
   BookOpen,
+  CheckCheck,
   CheckCircle2,
   ChevronDown,
   History,
@@ -12,6 +13,8 @@ import {
   ListChecks,
   RotateCcw,
   Target,
+  Trash2,
+  X,
   XCircle,
 } from 'lucide-vue-next'
 import { chapterById, getSection } from '@/data/book'
@@ -23,6 +26,7 @@ import { formatDate, isAnswerCorrect } from '@/utils/quiz'
 
 const progress = useProgressStore()
 const activeChapterId = ref<number | null>(null)
+const showClearConfirm = ref(false)
 
 const wrongQuestions = computed(() =>
   progress.wrongQuestionIds
@@ -131,6 +135,45 @@ function selectChapter(chapterId: number | null) {
 function padNumber(value: number) {
   return String(value).padStart(2, '0')
 }
+
+function markQuestionReviewed(questionId: string) {
+  progress.markWrongQuestionReviewed(questionId)
+  if (
+    activeChapterId.value !== null &&
+    !wrongQuestions.value.some(
+      (question) => question.chapterId === activeChapterId.value,
+    )
+  ) {
+    activeChapterId.value = null
+  }
+}
+
+function confirmClearWrongbook() {
+  progress.dismissAllWrongQuestions()
+  activeChapterId.value = null
+  showClearConfirm.value = false
+}
+
+function closeClearConfirm() {
+  showClearConfirm.value = false
+}
+
+function handleKeydown(event: KeyboardEvent) {
+  if (showClearConfirm.value && event.key === 'Escape') closeClearConfirm()
+}
+
+watch(showClearConfirm, (open) => {
+  document.body.style.overflow = open ? 'hidden' : ''
+})
+
+onMounted(() => {
+  window.addEventListener('keydown', handleKeydown)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeydown)
+  document.body.style.overflow = ''
+})
 </script>
 
 <template>
@@ -147,8 +190,8 @@ function padNumber(value: number) {
           <span class="eyebrow"><Target :size="13" /> ERROR LOG / REVIEW QUEUE</span>
           <h1>错题本<span v-if="wrongQuestions.length">，{{ wrongQuestions.length }}</span></h1>
           <p>
-            只保留每个知识点最新一次作答的结果。答对同一道题后，它会自动移出这里；
-            所以这里不追求题目数量，而是记录你还没真正讲清楚的机制。
+            只保留每个知识点最新一次作答的结果。答对同一道题后会自动移出，
+            你也可以在回顾解析后手动标记「已回顾」；之后再次答错，题目会重新进入错题本。
           </p>
           <div class="wrong-hero-actions">
             <RouterLink
@@ -196,7 +239,7 @@ function padNumber(value: number) {
         <span class="wrong-empty-icon"><CheckCircle2 :size="30" /></span>
         <span class="eyebrow">QUEUE CLEAR</span>
         <h2>当前没有待复习错题</h2>
-        <p>最新作答里没有错误。继续保持，也可以做一次综合检测检查知识横截面。</p>
+        <p>最新作答里没有待复习错题。手动移出的历史错题只有在之后再次答错时才会重新出现。</p>
         <div class="wrong-empty-actions">
           <RouterLink
             :to="{ name: 'practice', query: { scope: 'all' } }"
@@ -224,7 +267,7 @@ function padNumber(value: number) {
           </div>
           <div class="wrong-summary-note">
             <span>规则</span>
-            <p>重练答对后自动移出；再次答错则保留最新错误状态。</p>
+            <p>答对自动移出，回顾后也可手动移出；再次答错会重新进入。</p>
           </div>
         </div>
 
@@ -250,13 +293,24 @@ function padNumber(value: number) {
               <span>{{ group.questions.length }}</span>
             </button>
           </div>
-          <RouterLink
-            :to="{ name: 'practice', query: { scope: 'wrong' } }"
-            class="toolbar-cta"
-          >
-            <RotateCcw :size="15" />
-            全部重练
-          </RouterLink>
+          <div class="wrong-toolbar-actions">
+            <button
+              type="button"
+              class="toolbar-clear"
+              title="移出全部待复习错题，历史检测记录和掌握度不会改变"
+              @click="showClearConfirm = true"
+            >
+              <Trash2 :size="14" />
+              清空全部错题
+            </button>
+            <RouterLink
+              :to="{ name: 'practice', query: { scope: 'wrong' } }"
+              class="toolbar-cta"
+            >
+              <RotateCcw :size="15" />
+              全部重练
+            </RouterLink>
+          </div>
         </div>
 
         <div class="wrong-layout">
@@ -333,7 +387,15 @@ function padNumber(value: number) {
 
                 <footer class="wrong-card-footer">
                   <span>来自第 {{ question.chapterId }} 章</span>
-                  <div>
+                  <div class="wrong-card-footer-actions">
+                    <button
+                      type="button"
+                      class="wrong-done-button"
+                      @click="markQuestionReviewed(question.id)"
+                    >
+                      <CheckCheck :size="13" />
+                      已回顾，移出
+                    </button>
                     <RouterLink
                       :to="question.pointIds[0] ? pointLink(question, question.pointIds[0]) : `/chapter/${question.chapterId}?section=${encodeURIComponent(question.sectionId)}`"
                       class="text-button"
@@ -364,15 +426,19 @@ function padNumber(value: number) {
                 <ol class="method-list method-list--compact">
                   <li>
                     <span>01</span>
-                    <div><strong>重练全部错题</strong><p>系统按当前错题集生成检测。</p></div>
+                    <div><strong>回顾解析</strong><p>先看懂错误原因与正确答案。</p></div>
                   </li>
                   <li>
                     <span>02</span>
-                    <div><strong>答对同题</strong><p>最新作答变为正确后，题目自动移出。</p></div>
+                    <div><strong>手动移出</strong><p>点击“已回顾，移出”或清空错题本。</p></div>
                   </li>
                   <li>
                     <span>03</span>
-                    <div><strong>再次答错</strong><p>仍保留在错题本，并更新错误次数。</p></div>
+                    <div><strong>重练答对</strong><p>最新作答变为正确后，题目自动移出。</p></div>
+                  </li>
+                  <li>
+                    <span>04</span>
+                    <div><strong>再次答错</strong><p>题目会带着新的错误记录重新出现。</p></div>
                   </li>
                 </ol>
               </article>
@@ -389,5 +455,50 @@ function padNumber(value: number) {
         </div>
       </template>
     </div>
+
+    <Teleport to="body">
+      <Transition name="fade">
+        <div
+          v-if="showClearConfirm"
+          class="modal-backdrop"
+          role="presentation"
+          @click.self="closeClearConfirm"
+        >
+          <div
+            class="submit-modal wrongbook-clear-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="clear-wrongbook-title"
+          >
+            <button
+              type="button"
+              class="modal-close"
+              aria-label="关闭"
+              @click="closeClearConfirm"
+            >
+              <X :size="17" />
+            </button>
+            <span class="modal-mark">
+              <CheckCheck :size="23" />
+            </span>
+            <span class="eyebrow">REVIEW QUEUE / CLEAR</span>
+            <h2 id="clear-wrongbook-title">清空全部错题本？</h2>
+            <p>
+              这会把 {{ wrongQuestions.length }} 道待复习题目标记为“已回顾”并移出队列。
+              检测记录、正确率和知识颗粒掌握度都不会改变；以后再次答错，题目会重新出现。
+            </p>
+            <div class="modal-actions">
+              <button type="button" class="btn btn-secondary" @click="closeClearConfirm">
+                取消
+              </button>
+              <button type="button" class="btn btn-primary" @click="confirmClearWrongbook">
+                <CheckCheck :size="15" />
+                移出错题本
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>

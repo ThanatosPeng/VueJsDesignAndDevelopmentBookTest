@@ -119,6 +119,7 @@ export interface Attempt {
 
 export interface LatestAnswer {
   questionId: string
+  attemptId: string
   correct: boolean
   attemptedAt: number
 }
